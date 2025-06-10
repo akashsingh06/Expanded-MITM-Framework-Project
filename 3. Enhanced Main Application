@@ -1,0 +1,89 @@
+src/main.py
+
+import argparse
+import yaml
+from core.logger import MITMLogger
+from core.network import NetworkUtils
+from modules.arp_spoof import ARPSpoofer
+from modules.dns_spoof import DNSSpoofer
+from modules.http_intercept import HTTPInterceptor
+import signal
+import sys
+
+class MITMFramework:
+    def __init__(self, config_file='config/default.yaml'):
+        self.logger = MITMLogger(log_file='mitm.log')
+        self.load_config(config_file)
+        self.modules = {}
+    
+    def load_config(self, config_file):
+        """Load configuration from YAML file"""
+        try:
+            with open(config_file, 'r') as f:
+                self.config = yaml.safe_load(f)
+            self.logger.info("Configuration loaded successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to load config: {e}")
+            sys.exit(1)
+    
+    def start_modules(self):
+        """Start all configured modules"""
+        # ARP Spoofing
+        if self.config.get('arp_spoof', {}).get('enabled', False):
+            arp_config = self.config['arp_spoof']
+            self.modules['arp_spoof'] = ARPSpoofer(
+                arp_config['target_ip'],
+                arp_config['gateway_ip'],
+                arp_config['interface'],
+                self.logger
+            )
+            if not self.modules['arp_spoof'].start():
+                self.logger.error("Failed to start ARP spoofer")
+        
+        # DNS Spoofing
+        if self.config.get('dns_spoof', {}).get('enabled', False):
+            dns_config = self.config['dns_spoof']
+            self.modules['dns_spoof'] = DNSSpoofer(
+                dns_config['mappings'],
+                dns_config['interface'],
+                self.logger
+            )
+            if not self.modules['dns_spoof'].start():
+                self.logger.error("Failed to start DNS spoofer")
+        
+        # Add other modules here...
+    
+    def stop_modules(self):
+        """Stop all running modules"""
+        for name, module in self.modules.items():
+            self.logger.info(f"Stopping {name} module...")
+            module.stop()
+    
+    def signal_handler(self, sig, frame):
+        """Handle Ctrl+C"""
+        self.logger.warning("Received interrupt signal, shutting down...")
+        self.stop_modules()
+        sys.exit(0)
+
+def main():
+    parser = argparse.ArgumentParser(description="Advanced MITM Framework")
+    parser.add_argument("-c", "--config", help="Configuration file", default="config/default.yaml")
+    args = parser.parse_args()
+    
+    framework = MITMFramework(args.config)
+    
+    # Setup signal handler
+    signal.signal(signal.SIGINT, framework.signal_handler)
+    
+    # Start modules
+    framework.start_modules()
+    
+    # Keep main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        framework.signal_handler(None, None)
+
+if __name__ == "__main__":
+    main()
