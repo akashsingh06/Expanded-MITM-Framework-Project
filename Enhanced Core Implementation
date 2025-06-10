@@ -1,0 +1,75 @@
+1. src/core/logger.py
+
+import logging
+from colorama import Fore, Style
+import datetime
+
+class MITMLogger:
+    def __init__(self, log_file=None):
+        self.logger = logging.getLogger('MITM-Framework')
+        self.logger.setLevel(logging.DEBUG)
+        
+        # Console handler
+        ch = logging.StreamHandler()
+        ch.setLevel(logging.INFO)
+        formatter = logging.Formatter(f'{Fore.GREEN}%(asctime)s{Style.RESET_ALL} - {Fore.BLUE}%(levelname)s{Style.RESET_ALL} - %(message)s')
+        ch.setFormatter(formatter)
+        self.logger.addHandler(ch)
+        
+        # File handler
+        if log_file:
+            fh = logging.FileHandler(log_file)
+            fh.setLevel(logging.DEBUG)
+            file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+            fh.setFormatter(file_formatter)
+            self.logger.addHandler(fh)
+    
+    def info(self, message):
+        self.logger.info(message)
+    
+    def warning(self, message):
+        self.logger.warning(f'{Fore.YELLOW}{message}{Style.RESET_ALL}')
+    
+    def error(self, message):
+        self.logger.error(f'{Fore.RED}{message}{Style.RESET_ALL}')
+    
+    def critical(self, message):
+        self.logger.critical(f'{Fore.RED}{Style.BRIGHT}{message}{Style.RESET_ALL}')
+
+2. src/core/network.py
+
+from scapy.all import *
+from scapy.layers.l2 import ARP, Ether
+from scapy.layers.inet import IP, TCP, UDP
+from netaddr import IPNetwork
+import socket
+
+class NetworkUtils:
+    @staticmethod
+    def get_interface_info(interface):
+        """Get IP and MAC address of specified interface"""
+        try:
+            mac = get_if_hwaddr(interface)
+            ip = get_if_addr(interface)
+            return {'ip': ip, 'mac': mac}
+        except Exception as e:
+            raise Exception(f"Could not get interface info: {e}")
+    
+    @staticmethod
+    def get_mac(ip):
+        """Get MAC address for given IP"""
+        try:
+            return getmacbyip(ip)
+        except Exception as e:
+            raise Exception(f"Could not resolve MAC for {ip}: {e}")
+    
+    @staticmethod
+    def scan_network(network_range):
+        """Scan network for active hosts"""
+        hosts = []
+        for ip in IPNetwork(network_range):
+            packet = Ether(dst="ff:ff:ff:ff:ff:ff")/ARP(pdst=str(ip))
+            response = srp(packet, timeout=2, verbose=0)[0]
+            for sent, received in response:
+                hosts.append({'ip': received.psrc, 'mac': received.hwsrc})
+        return hosts
