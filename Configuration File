@@ -1,0 +1,26 @@
+config/default.yaml
+
+# MITM Framework Configuration
+
+arp_spoof:
+  enabled: true
+  target_ip: 192.168.1.100
+  gateway_ip: 192.168.1.1
+  interface: eth0
+
+dns_spoof:
+  enabled: true
+  interface: eth0
+  mappings:
+    "example.com": "192.168.1.200"
+    "test.com": "192.168.1.200"
+
+http_intercept:
+  enabled: true
+  interface: eth0
+  ssl_strip: true
+  port: 8080
+
+logging:
+  level: INFO
+  file: mitm.log
