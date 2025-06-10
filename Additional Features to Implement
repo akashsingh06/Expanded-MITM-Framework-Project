@@ -1,0 +1,37 @@
+1-SSL Stripping:
+
+Implement HTTPS to HTTP downgrade
+
+Handle HSTS bypass techniques
+
+2-HTTP Interception:
+
+Modify HTTP requests/responses
+
+Inject JavaScript/CSS
+
+Capture credentials
+
+3-Session Hijacking:
+
+Cookie stealing
+
+Token interception
+
+4-Packet Modification:
+
+Modify TCP/UDP payloads
+
+Inject malicious packets
+
+5-Reporting:
+
+Generate PDF/HTML reports
+
+Save captured data to database
+
+6-GUI Interface:
+
+Web-based dashboard
+
+Real-time traffic visualization
